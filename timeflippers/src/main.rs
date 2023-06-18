@@ -23,13 +23,13 @@ async fn main() -> Result<(), Error> {
     log::info!("Time set on TimeFlip: {}", tz.from_utc_datetime(&time));
     log::info!("System status: {:?}", timeflip.system_status().await?);
     log::info!("Reading history");
-    let history = timeflip.read_history_since(200).await?;
+    let history = timeflip.read_history_since(270).await?;
     for entry in history {
         log::info!("{}", entry);
     }
     log::info!(
         "Reading last event: {}",
-        timeflip.read_history_entry(0xFFFFFFFF).await?
+        timeflip.read_last_history_entry().await?
     );
 
     log::info!(

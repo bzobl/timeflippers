@@ -508,7 +508,7 @@ impl TimeFlip {
 
     /// Read a single history event identified by its ID.
     ///
-    /// When `0xFFFF` is passed as `id`, the last event is returned.
+    /// When `0xFFFFFFFF` is passed as `id`, the last event is returned.
     pub async fn read_history_entry(&self, id: u32) -> Result<Entry, Error> {
         let mut read_command = Vec::with_capacity(5);
         read_command.put_u8(0x01);
@@ -522,6 +522,11 @@ impl TimeFlip {
             .await?;
 
         Ok(Entry::from_data(&data)?)
+    }
+
+    /// Read the last histroy entry.
+    pub async fn read_last_history_entry(&self) -> Result<Entry, Error> {
+        self.read_history_entry(0xFFFF_FFFF).await
     }
 
     /// Read history entries.
