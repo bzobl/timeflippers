@@ -4,7 +4,7 @@
 use bluez_async::{uuid_from_u16, BluetoothError, BluetoothSession, CharacteristicInfo, DeviceId};
 use bytes::{Buf, BufMut};
 use chrono::NaiveDateTime;
-use std::{convert::Infallible, num::TryFromIntError};
+use std::{convert::Infallible, fmt, num::TryFromIntError, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -250,7 +250,7 @@ pub trait CommandResult {
     type Output;
     type Error;
 
-    /// Construct an object from the date received in [Characteristic::CommandResult].
+    /// Construct an object from the data read from [Characteristic::CommandResult].
     fn from_data(data: &[u8]) -> Result<Self::Output, Self::Error>;
 }
 
@@ -382,7 +382,7 @@ impl CommandResult for FacetSettings {
     type Output = Self;
     type Error = FacetSettingsError;
 
-    /// Construct a [FacetTask] from the date received in [Characteristic::CommandResult].
+    /// Construct a [FacetTask] from the data read from [Characteristic::CommandResult].
     fn from_data(mut data: &[u8]) -> Result<Self, FacetSettingsError> {
         if data.len() < 11 {
             return Err(FacetSettingsError::TooShort(data.len()));
@@ -455,7 +455,7 @@ pub struct SyncState {
 }
 
 impl SyncState {
-    /// Construct a [SyncState] from the date received in [Characteristic::CommandResult].
+    /// Construct a [SyncState] from the data read from [Characteristic::CommandResult].
     pub fn from_data(data: &[u8]) -> Result<Self, SyncStateError> {
         if data.len() < 4 {
             return Err(SyncStateError::TooShort(data.len()));
@@ -485,5 +485,85 @@ impl SyncState {
             accelerometer_error,
             flash_error,
         })
+    }
+}
+
+/// Error when parsing a history entry.
+#[allow(missing_docs)]
+#[derive(Error, Debug)]
+pub enum EntryError {
+    #[error("end of history")]
+    EndOfHistory,
+    #[error("too short")]
+    TooShort,
+    #[error("invalid facet: {0}")]
+    InvalidFacet(#[from] super::FacetError),
+    #[error("invalid start time of flip: {0}")]
+    InvalidTimestamp(u64),
+}
+
+/// An entry from TimeFlip2's history.
+#[derive(Debug, Clone)]
+pub struct Entry {
+    /// ID of the entry.
+    pub id: u32,
+    /// Active facet.
+    pub facet: super::Facet,
+    /// Whether or not the face is in pause state.
+    pub pause: bool,
+    /// The time the dice was flipped.
+    pub time: NaiveDateTime,
+    /// Duration the facet was active.
+    pub duration: Duration,
+}
+
+impl Entry {
+    /// Construct a [Entry] from the data read from [Characteristic::History].
+    pub fn from_data(mut data: &[u8]) -> Result<Entry, EntryError> {
+        if data.len() < 17 {
+            return Err(EntryError::TooShort);
+        }
+        let id = data.get_u32();
+        let facet = data.get_u8();
+        let start_time = data.get_u64();
+        let duration = data.get_u32();
+
+        if id == 0 && facet == 0 && start_time == 0 && duration == 0 {
+            return Err(EntryError::EndOfHistory);
+        }
+
+        let (facet, pause) = if facet > 127 {
+            (facet - 128, true)
+        } else {
+            (facet, false)
+        };
+
+        Ok(Entry {
+            id,
+            facet: super::Facet::new(facet)?,
+            pause,
+            time: NaiveDateTime::from_timestamp_opt(
+                start_time
+                    .try_into()
+                    .map_err(|_| EntryError::InvalidTimestamp(start_time))?,
+                0,
+            )
+            .ok_or(EntryError::InvalidTimestamp(start_time))?,
+            duration: Duration::from_secs(duration.into()),
+        })
+    }
+}
+
+impl fmt::Display for Entry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}: {} {} on {} for {} seconds",
+            self.id,
+            self.facet,
+            if self.pause { "paused" } else { "started" },
+            self.time,
+            self.duration.as_secs()
+        )
     }
 }
