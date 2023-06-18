@@ -11,7 +11,7 @@ following steps are necessary:
 - open `bluetoothctl` interactively
 - view the attached bluetooth controller: `devices`
 - you can view more detailed information: `show 00:11:22:33:44:55`
-- if more than one bluetooth controller is available, select one: `select 00:11:22:33:44:55
+- if more than one bluetooth controller is available, select one: `select 00:11:22:33:44:55`
 - make sure you have power: `power on`
 - start scanning for devices: `scan on`
 - The TimeFlip dice should show up (you might have to move it to wake it
@@ -52,7 +52,7 @@ We can, again, use `bluetoothctl` for that:
   be selected: `select-attribtue <UUID>` and then a `read`, `write` or
   `notify` command has to be issued.
 
-E.g., to read the battery status (UUID 00002a19-0000-1000-8000-00805f9b34fb),
+E.g., to read the battery status (UUID _00002a19-0000-1000-8000-00805f9b34fb_),
 the following can be done:
 
 ```
@@ -67,7 +67,7 @@ Attempting to read /org/bluez/hci0/dev_EB_12_A0_12_34_56/service001d/char001e
 The single byte returned (0x64) is the current battery level, i.e., 100%.
 
 The TimeFlip2 specific characteristics are accessible via UUIDs
-F1196F51-71A4-11E6-BDF4-0800200C9A66 through F1196F58-71A4-11E6-BDF4-0800200C9A66
+_F1196F51-71A4-11E6-BDF4-0800200C9A66_ through _F1196F58-71A4-11E6-BDF4-0800200C9A66_
 (note the last digit of the first UUID chunk), the semantics of those
 can be found here[^2].
 
@@ -89,7 +89,7 @@ reinizialized.
 ### Password
 
 To access the dice, a password, which is reset on every disconnect, has
-to be written to F1196F57-71A4-11E6-BDF4-0800200C9A66. The default
+to be written to _F1196F57-71A4-11E6-BDF4-0800200C9A66_. The default
 password is "000000", hence the initial authorization should be done as
 follows:
 ```
