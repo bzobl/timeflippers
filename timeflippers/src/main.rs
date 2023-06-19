@@ -1,6 +1,7 @@
 use chrono::{offset::Local, TimeZone};
+use futures::stream::StreamExt;
 use timeflippers::{
-    timeflip::{BlinkInterval, Error, Facet, TimeFlip},
+    timeflip::{Error, Facet, TimeFlip},
     BluetoothSession,
 };
 use tokio::{select, signal};
@@ -11,7 +12,7 @@ async fn main() -> Result<(), Error> {
 
     let tz = Local::now().timezone();
 
-    let (bg_task, session) = BluetoothSession::new().await?;
+    let (mut bg_task, session) = BluetoothSession::new().await?;
 
     let timeflip = TimeFlip::connect(&session).await?;
     log::info!("connected");
@@ -37,23 +38,28 @@ async fn main() -> Result<(), Error> {
         timeflip.get_task(Facet::new(1).unwrap()).await?,
     );
 
-    timeflip.color(Facet::new(1).unwrap(), 0, 0, 0xffff).await?;
-    timeflip
-        .blink_interval(BlinkInterval::new(30).unwrap())
-        .await?;
-    timeflip.pause().await?;
-    log::info!("pause");
-    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-    timeflip.unpause().await?;
-    log::info!("unpaused");
+    timeflip.subscribe_battery_level().await?;
+    timeflip.subscribe_events().await?;
+    timeflip.subscribe_facet().await?;
+    timeflip.subscribe_double_tap().await?;
+    let mut stream = timeflip.event_stream().await?;
 
-    select! {
-        _ = signal::ctrl_c() => {
-            log::info!("shutting down");
-        }
-        res = bg_task => {
-            if let Err(e) =res {
-                log::error!("bluetooth session background task exited with error: {e}");
+    log::info!("Waiting for events");
+
+    loop {
+        select! {
+            event = stream.next() => {
+                log::info!("New event: {event:?}");
+            }
+            _ = signal::ctrl_c() => {
+                log::info!("shutting down");
+                break;
+            }
+            res = &mut bg_task => {
+                if let Err(e) =res {
+                    log::error!("bluetooth session background task exited with error: {e}");
+                }
+                break;
             }
         }
     }
