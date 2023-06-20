@@ -6,7 +6,7 @@ use bluez_async::{
     CharacteristicId, CharacteristicInfo, DeviceEvent, DeviceId,
 };
 use bytes::{Buf, BufMut};
-use chrono::NaiveDateTime;
+use chrono::{offset::Local, DateTime, NaiveDateTime, Utc};
 use std::{convert::Infallible, fmt, num::TryFromIntError, string::FromUtf8Error, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
@@ -154,7 +154,7 @@ pub enum Command {
     /// Get current time saved on TimeFlip2.
     GetTime,
     /// Set the time (in UTC) saved on TimeFlip2.
-    Time(NaiveDateTime),
+    Time(DateTime<Utc>),
     /// Set The LED brightness level in percent.
     Brightness(super::Percent),
     /// Set the Led Blink interval in seconds (range 5-60).
@@ -266,7 +266,7 @@ impl CommandResult for () {
     }
 }
 
-/// Error for converting a [Characteristic::CommandResult]'s output to [NaiveDateTime].
+/// Error for converting a [Characteristic::CommandResult]'s output to [DateTime].
 #[derive(Debug, Error)]
 pub enum GetTimeError {
     #[error("need 9 byte for timestamp, read {0}")]
@@ -279,7 +279,7 @@ pub enum GetTimeError {
     Timestamp(u64),
 }
 
-impl CommandResult for NaiveDateTime {
+impl CommandResult for DateTime<Utc> {
     type Output = Self;
     type Error = GetTimeError;
 
@@ -295,6 +295,7 @@ impl CommandResult for NaiveDateTime {
         let timestamp = data.get_u64();
         NaiveDateTime::from_timestamp_opt(timestamp.try_into()?, 0)
             .ok_or(GetTimeError::Timestamp(timestamp))
+            .map(|naive| DateTime::<Utc>::from_utc(naive, Utc))
     }
 }
 
@@ -515,7 +516,7 @@ pub struct Entry {
     /// Whether or not the face is in pause state.
     pub pause: bool,
     /// The time the dice was flipped.
-    pub time: NaiveDateTime,
+    pub time: DateTime<Utc>,
     /// Duration the facet was active.
     pub duration: Duration,
 }
@@ -551,7 +552,8 @@ impl Entry {
                     .map_err(|_| EntryError::InvalidTimestamp(start_time))?,
                 0,
             )
-            .ok_or(EntryError::InvalidTimestamp(start_time))?,
+            .ok_or(EntryError::InvalidTimestamp(start_time))
+            .map(|naive| DateTime::<Utc>::from_utc(naive, Utc))?,
             duration: Duration::from_secs(duration.into()),
         })
     }
@@ -565,7 +567,7 @@ impl fmt::Display for Entry {
             self.id,
             self.facet,
             if self.pause { "paused" } else { "started" },
-            self.time,
+            self.time.with_timezone(&Local::now().timezone()),
             self.duration.as_secs()
         )
     }

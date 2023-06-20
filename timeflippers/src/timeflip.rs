@@ -6,7 +6,7 @@ use bluez_async::{
     DeviceInfo,
 };
 use bytes::BufMut;
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use futures::stream::{BoxStream, StreamExt};
 use std::{convert::Infallible, fmt, string::FromUtf8Error};
 use thiserror::Error;
@@ -378,12 +378,12 @@ impl TimeFlip {
     }
 
     /// Get the current time (in UTC) saved on TimeFlip2.
-    pub async fn time(&self) -> Result<NaiveDateTime, Error> {
-        self.command::<NaiveDateTime>(gatt::Command::GetTime).await
+    pub async fn time(&self) -> Result<DateTime<Utc>, Error> {
+        self.command::<DateTime<Utc>>(gatt::Command::GetTime).await
     }
 
     /// Set the time (in UTC) saved on TimeFlip2.
-    pub async fn set_time(&self, time: NaiveDateTime) -> Result<(), Error> {
+    pub async fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
         self.command::<()>(gatt::Command::Time(time)).await
     }
 

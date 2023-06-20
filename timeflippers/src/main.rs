@@ -1,4 +1,4 @@
-use chrono::{offset::Local, TimeZone};
+use chrono::offset::Local;
 use futures::stream::StreamExt;
 use timeflippers::{
     timeflip::{Error, Facet, TimeFlip},
@@ -21,7 +21,7 @@ async fn main() -> Result<(), Error> {
     log::info!("Last event: {}", timeflip.last_event().await?);
     log::info!("Facet: {:?}", timeflip.facet().await?);
     let time = timeflip.time().await?;
-    log::info!("Time set on TimeFlip: {}", tz.from_utc_datetime(&time));
+    log::info!("Time set on TimeFlip: {}", time.with_timezone(&tz));
     log::info!("System status: {:?}", timeflip.system_status().await?);
     log::info!("Reading history");
     let history = timeflip.read_history_since(270).await?;
