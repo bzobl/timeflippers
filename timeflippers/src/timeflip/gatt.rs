@@ -1,10 +1,13 @@
 //! Low level types for communicating with TimeFlip2 using BLE/GATT
 #![deny(missing_docs)]
 
-use bluez_async::{uuid_from_u16, BluetoothError, BluetoothSession, CharacteristicInfo, DeviceId};
+use bluez_async::{
+    uuid_from_u16, BluetoothError, BluetoothEvent, BluetoothSession, CharacteristicEvent,
+    CharacteristicId, CharacteristicInfo, DeviceEvent, DeviceId,
+};
 use bytes::{Buf, BufMut};
 use chrono::NaiveDateTime;
-use std::{convert::Infallible, fmt, num::TryFromIntError, time::Duration};
+use std::{convert::Infallible, fmt, num::TryFromIntError, string::FromUtf8Error, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -565,5 +568,133 @@ impl fmt::Display for Entry {
             self.time,
             self.duration.as_secs()
         )
+    }
+}
+
+/// Error while decoding bluetooth event
+#[derive(Debug, Error)]
+pub enum EventError {
+    #[error("unexpected bluetooth event stream: {0:?}")]
+    UnexpectedEvent(BluetoothEvent),
+    #[error("event for unexpected device in stream: {0:?}")]
+    UnexpectedDevice(DeviceId),
+    #[error("event for unexpected characteristic in stream: {0:?}")]
+    UnexpectedCharacteristic(CharacteristicId),
+    #[error("ignored connected event")]
+    IgnoreConnected,
+    #[error("value too short for {0}")]
+    TooShort(String),
+    #[error("{0}")]
+    BatteryLevel(#[from] super::PercentError),
+    #[error("{0}")]
+    Event(#[from] FromUtf8Error),
+    #[error("{0}")]
+    Facet(#[from] super::FacetError),
+    #[error("invalid facet in double tap event: {0}")]
+    DoubleTap(super::FacetError),
+}
+
+/// Bluez handles for identifying Bluetooth events.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventHandles {
+    pub device_id: DeviceId,
+    pub battery_level: CharacteristicId,
+    pub last_event: CharacteristicId,
+    pub facet: CharacteristicId,
+    pub double_tap: CharacteristicId,
+}
+
+/// Events for subscribed properties of the TimeFlip2.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Event {
+    /// Device has disconnected.
+    Disconnected,
+    /// Battery level has changed.
+    BatteryLevel(super::Percent),
+    /// Status message has changed.
+    Event(String),
+    /// The facet has changed.
+    Facet(super::Facet),
+    /// Double Tap / Pause detected.
+    ///
+    /// This event indicates that the TimeFlip2 has been set into pause mode either
+    /// by double-tapping or by auto-pause.
+    DoubleTap {
+        /// The facet currently facing up.
+        facet: super::Facet,
+        /// Whether pause mode has been entered or left.
+        pause: bool,
+    },
+}
+
+impl Event {
+    /// Construct an [Event] from a [BluetoothEvent].
+    pub fn from_bluetooth_event(
+        bt_event: BluetoothEvent,
+        handles: &EventHandles,
+    ) -> Result<Self, EventError> {
+        match bt_event {
+            BluetoothEvent::Characteristic {
+                id,
+                event: CharacteristicEvent::Value { value },
+            } => {
+                if id == handles.battery_level {
+                    log::debug!("Battery Level event");
+                    value
+                        .first()
+                        .ok_or(EventError::TooShort("Battery Level".into()))
+                        .and_then(|v| super::Percent::new(*v).map_err(Into::into))
+                        .map(Event::BatteryLevel)
+                } else if id == handles.last_event {
+                    log::debug!("Eventlog event");
+                    String::from_utf8(value)
+                        .map_err(Into::into)
+                        .map(Event::Event)
+                } else if id == handles.facet {
+                    log::debug!("Facet event");
+                    value
+                        .first()
+                        .ok_or(EventError::TooShort("Facet".into()))
+                        .and_then(|v| super::Facet::new(*v).map_err(Into::into))
+                        .map(Event::Facet)
+                } else if id == handles.double_tap {
+                    log::debug!("DoubleTap event");
+                    value
+                        .first()
+                        .ok_or(EventError::TooShort("Double Tap".into()))
+                        .and_then(|v| {
+                            let (facet, pause) = if *v > 127 {
+                                (*v - 128, true)
+                            } else {
+                                (*v, false)
+                            };
+                            super::Facet::new(facet)
+                                .map(|facet| Event::DoubleTap { facet, pause })
+                                .map_err(EventError::DoubleTap)
+                        })
+                } else {
+                    Err(EventError::UnexpectedCharacteristic(id))
+                }
+            }
+            BluetoothEvent::Device {
+                id,
+                event: DeviceEvent::Connected { connected },
+            } => {
+                if id != handles.device_id {
+                    Err(EventError::UnexpectedDevice(id))
+                } else if connected {
+                    Err(EventError::IgnoreConnected)
+                } else {
+                    Ok(Event::Disconnected)
+                }
+            }
+            BluetoothEvent::Adapter { .. }
+            | BluetoothEvent::Device { .. }
+            | BluetoothEvent::Characteristic { .. } => {
+                // The adpter/device/characteristic events are marked as non-exhaustive, hence
+                // we have to have a catch all here.
+                Err(EventError::UnexpectedEvent(bt_event))
+            }
+        }
     }
 }
