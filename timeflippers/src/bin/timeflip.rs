@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use futures::stream::StreamExt;
 use timeflippers::{
     timeflip::{Error, TimeFlip},
+    view::History,
     BluetoothSession, Config, Facet,
 };
 use tokio::{select, signal};
@@ -13,9 +14,21 @@ struct Options {
     cmd: Command,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+enum HistoryStyle {
+    Lines,
+    Tabular,
+}
+
 #[derive(Subcommand)]
 enum Command {
     Battery,
+    Events {
+        #[arg(long, help = "start with entry ID", default_value = "0")]
+        start_with: u32,
+        #[arg(long, help = "choose output style", default_value = "tabular")]
+        style: HistoryStyle,
+    },
     Facet,
     Status,
     SyncState,
@@ -30,6 +43,18 @@ impl Command {
         match self {
             Battery => {
                 println!("Battery level: {}%", timeflip.battery_level().await?);
+            }
+            Events { start_with, style } => {
+                let mut config = Config::default();
+                config.sides[0].name = Some("Kaffee".into());
+
+                let entries = timeflip.read_history_since(*start_with).await?;
+                let history = History::new(entries, config);
+                use HistoryStyle::*;
+                match style {
+                    Lines => println!("{}", history),
+                    Tabular => println!("{}", history.table()),
+                }
             }
             Facet => {
                 println!("Currently up: {:?}", timeflip.facet().await?);
