@@ -1,8 +1,11 @@
-use chrono::{Local, TimeZone};
+use chrono::{DateTime, Local, TimeZone, Utc};
 use std::{fmt, time::Duration};
 
 use crate::config::Config;
 use crate::timeflip::Entry;
+
+mod table;
+use table::{Position, TableHeader};
 
 struct DurationView<'a>(&'a Duration);
 
@@ -41,27 +44,47 @@ impl History {
         }
     }
 
-    pub fn table<'a>(&'a self) -> HistoryTable<'a> {
-        HistoryTable {
-            entries: &self.entries,
+    pub fn all<'a>(&'a self) -> HistoryFiltered<'a> {
+        HistoryFiltered {
+            entries: self.entries.iter().collect(),
+            names: &self.names,
+        }
+    }
+
+    pub fn since<'a>(&'a self, date: DateTime<Utc>) -> HistoryFiltered<'a> {
+        HistoryFiltered {
+            entries: self
+                .entries
+                .iter()
+                .filter(|entry| entry.time > date)
+                .collect(),
             names: &self.names,
         }
     }
 }
 
-impl fmt::Display for History {
+pub struct HistoryFiltered<'a> {
+    entries: Vec<&'a Entry>,
+    names: &'a [String],
+}
+
+impl<'a> HistoryFiltered<'a> {
+    pub fn table(&'a self) -> HistoryTable<'a> {
+        HistoryTable {
+            entries: &self.entries,
+            names: self.names,
+        }
+    }
+}
+
+impl<'a> fmt::Display for HistoryFiltered<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let timezone = Local::now().timezone();
-        const width: usize = 80;
-
-        let separator = format!("+{}+", ["-"; width + 2].into_iter().collect::<String>());
-
-        writeln!(f, "{}", separator)?;
 
         for entry in &self.entries {
             writeln!(
                 f,
-                "| {:width$} |",
+                "{}",
                 EntryView {
                     entry,
                     name: &self.names[usize::from(entry.facet.index()) - 1],
@@ -69,11 +92,8 @@ impl fmt::Display for History {
                     align_name: 10,
                     with_id: true,
                 },
-                width = 80,
             )?;
         }
-
-        writeln!(f, "{}", separator)?;
 
         Ok(())
     }
@@ -117,7 +137,7 @@ where
 }
 
 pub struct HistoryTable<'a> {
-    entries: &'a [Entry],
+    entries: &'a [&'a Entry],
     names: &'a [String],
 }
 
@@ -130,14 +150,16 @@ impl<'a> fmt::Display for HistoryTable<'a> {
 
         writeln!(
             f,
-            "┌─{:─^width_name$}┬{:─^width_started$}┬{:─^width_duration$}─┐",
-            "Side",
-            "Started",
-            "Duration",
-            width_name = WIDTH_NAME,
-            width_started = WIDTH_STARTED,
-            width_duration = WIDTH_DURATION
-        );
+            "{}",
+            TableHeader {
+                columns: vec![
+                    ("Side", WIDTH_NAME),
+                    ("Started", WIDTH_STARTED),
+                    ("Duration", WIDTH_DURATION)
+                ],
+                position: Position::Top,
+            },
+        )?;
 
         for entry in self.entries {
             if entry.pause {
@@ -160,14 +182,12 @@ impl<'a> fmt::Display for HistoryTable<'a> {
 
         writeln!(
             f,
-            "└─{:─^width_name$}┴{:─^width_started$}┴{:─^width_duration$}─┘",
-            "─",
-            "─",
-            "─",
-            width_name = WIDTH_NAME,
-            width_started = WIDTH_STARTED,
-            width_duration = WIDTH_DURATION
-        );
+            "{}",
+            TableHeader {
+                columns: vec![("", WIDTH_NAME), ("", WIDTH_STARTED), ("", WIDTH_DURATION)],
+                position: Position::Bottom,
+            },
+        )?;
 
         Ok(())
     }
@@ -190,7 +210,7 @@ where
     <T as TimeZone>::Offset: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut line = format!(
+        let line = format!(
             "{:<width_name$}{}{:<width_started$}{}{:>width_duration$}",
             self.name,
             self.separator,

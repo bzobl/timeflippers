@@ -1,4 +1,4 @@
-use chrono::offset::Local;
+use chrono::{offset::Local, DateTime, NaiveDate};
 use clap::{Parser, Subcommand, ValueEnum};
 use futures::stream::StreamExt;
 use timeflippers::{
@@ -24,8 +24,10 @@ enum HistoryStyle {
 enum Command {
     Battery,
     Events {
-        #[arg(long, help = "start with entry ID", default_value = "0")]
+        #[arg(long, help = "start reading with entry ID", default_value = "0")]
         start_with: u32,
+        #[arg(long, help = "start displaying with entries after DATE (YYYY-MM-DD)")]
+        since: Option<NaiveDate>,
         #[arg(long, help = "choose output style", default_value = "tabular")]
         style: HistoryStyle,
     },
@@ -44,16 +46,30 @@ impl Command {
             Battery => {
                 println!("Battery level: {}%", timeflip.battery_level().await?);
             }
-            Events { start_with, style } => {
+            Events {
+                start_with,
+                style,
+                since,
+            } => {
                 let mut config = Config::default();
                 config.sides[0].name = Some("Kaffee".into());
 
                 let entries = timeflip.read_history_since(*start_with).await?;
                 let history = History::new(entries, config);
+                let filtered = if let Some(since) = since {
+                    let date = DateTime::<Local>::from_local(
+                        since.and_hms_opt(0, 0, 0).expect("is a valid time"),
+                        *Local::now().offset(),
+                    );
+
+                    history.since(date.into())
+                } else {
+                    history.all()
+                };
                 use HistoryStyle::*;
                 match style {
-                    Lines => println!("{}", history),
-                    Tabular => println!("{}", history.table()),
+                    Lines => println!("{}", filtered),
+                    Tabular => println!("{}", filtered.table()),
                 }
             }
             Facet => {
