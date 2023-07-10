@@ -51,6 +51,12 @@ pub enum Error {
     Bluetooth(#[from] BluetoothError),
     #[error("no TimeFlip2 bluetooth device found")]
     NoDevice,
+    #[error("TimeFlip2 reports Accelerometer error")]
+    AccelerometerError,
+    #[error("TimeFlip2 reports Flash error")]
+    FlashError,
+    #[error("Could not synchronize {0:?}")]
+    SyncError(SyncType),
 }
 
 impl From<Infallible> for Error {
@@ -353,6 +359,75 @@ impl TimeFlip {
             .read_characteristic_value(&self.characteristics.system_state.id)
             .await?;
         SyncState::from_data(&data).map_err(Into::into)
+    }
+
+    /// Synchronize the TimeFlip2 to the given config.
+    ///
+    /// Please note that this will not apply the configuration unconditionally, but only if
+    /// TimeFlip requires synchronization. When attempting to apply configuration use
+    /// [TimeFlip::set_config()] instead.
+    pub async fn sync(&self, config: &Config) -> Result<(), Error> {
+        let mut last_sync = None;
+        loop {
+            let sync_state = self.sync_state().await?;
+            if sync_state.accelerometer_error {
+                return Err(Error::AccelerometerError);
+            }
+            if sync_state.flash_error {
+                return Err(Error::FlashError);
+            }
+
+            if let Some(last_sync) = last_sync {
+                if last_sync == sync_state.sync {
+                    return Err(Error::SyncError(last_sync));
+                }
+            }
+
+            use SyncType::*;
+            match sync_state.sync {
+                FactoryReset | Time => {
+                    self.set_time(Utc::now()).await?;
+                }
+                FacetColor => {
+                    for (i, side) in config.sides.iter().enumerate() {
+                        let facet = Facet::new(i as u8 + 1)?;
+                        self.color(facet, side.color.clone()).await?;
+                    }
+                }
+                LedBrightness => {
+                    self.brightness(config.brightness.clone()).await?;
+                }
+                BlinkInterval => {
+                    self.blink_interval(config.blink_interval.clone()).await?;
+                }
+                TaskParameters => {
+                    for (i, side) in config.sides.iter().enumerate() {
+                        let facet = Facet::new(i as u8 + 1u8)?;
+                        self.task(facet, side.task.clone()).await?;
+                    }
+                }
+                AutoPause => {
+                    self.auto_pause(config.auto_pause.clone()).await?;
+                }
+                Synchronized => return Ok(()),
+            }
+            last_sync = Some(sync_state.sync);
+        }
+    }
+
+    /// Apply the given configuration to TimeFlip2's memory.
+    pub async fn write_config(&self, config: Config) -> Result<(), Error> {
+        // TODO: write password
+        self.brightness(config.brightness).await?;
+        self.blink_interval(config.blink_interval).await?;
+        self.auto_pause(config.auto_pause).await?;
+        for (i, side) in config.sides.into_iter().enumerate() {
+            let facet = Facet::new(i as u8 + 1u8)?;
+            self.color(facet.clone(), side.color).await?;
+            self.task(facet.clone(), side.task).await?;
+        }
+
+        Ok(())
     }
 
     /// Read a single history event identified by its ID.
