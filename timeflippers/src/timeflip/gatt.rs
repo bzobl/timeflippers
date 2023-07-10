@@ -164,12 +164,10 @@ pub enum Command {
     /// Set the color of a facet.
     SetColor {
         facet: super::Facet,
-        red: u16,
-        green: u16,
-        blue: u16,
+        color: super::Color,
     },
     /// Set the task parameters of a facet.
-    SetTaskParameter(super::Facet, FacetTask),
+    SetTaskParameter(super::Facet, super::FacetTask),
     /// Get the task parameter of a facet.
     GetTaskParameter(super::Facet),
     // missing: Name Record (0x15, no idea what this actually does),
@@ -214,35 +212,30 @@ impl Command {
             Time(time) => {
                 data.put_u64(u64::try_from(time.timestamp()).expect("timestamp is positive"))
             }
-            Brightness(super::Percent(value)) | BlinkInterval(super::BlinkInterval(value)) => {
-                data.put_u8(*value)
-            }
+            Brightness(value) => data.put_u8(value.get()),
+            BlinkInterval(value) => data.put_u8(value.seconds()),
             GetTime | ReadStatus => {}
-            SetColor {
-                facet,
-                red,
-                green,
-                blue,
-            } => {
-                data.put_u8(facet.0);
-                data.put_u16(*red);
-                data.put_u16(*green);
-                data.put_u16(*blue);
+            SetColor { facet, color } => {
+                let (r, g, b) = color.rgb();
+                data.put_u8(facet.index());
+                data.put_u16(r);
+                data.put_u16(g);
+                data.put_u16(b);
             }
             SetTaskParameter(facet, task) => {
-                data.put_u8(facet.0);
+                data.put_u8(facet.index());
                 match task {
-                    FacetTask::Simple => {
+                    super::FacetTask::Simple => {
                         data.put_u8(0);
                         data.put_u32(0);
                     }
-                    FacetTask::Pomodoro(timer) => {
+                    super::FacetTask::Pomodoro(timer) => {
                         data.put_u8(1);
                         data.put_u32(*timer);
                     }
                 }
             }
-            GetTaskParameter(facet) => data.put_u8(facet.0),
+            GetTaskParameter(facet) => data.put_u8(facet.index()),
         }
         data
     }
@@ -349,15 +342,6 @@ impl CommandResult for SystemStatus {
     }
 }
 
-/// Task assigned to a facet.
-#[derive(Debug, PartialEq, Eq)]
-pub enum FacetTask {
-    /// Simple counting up timer.
-    Simple,
-    /// Pomodoro timer with limit in seconds.
-    Pomodoro(u32),
-}
-
 /// Error for converting a [Characteristic::CommandResult]'s output to [FacetSettings].
 #[derive(Debug, Error)]
 pub enum FacetSettingsError {
@@ -377,7 +361,7 @@ pub struct FacetSettings {
     /// The facet.
     pub facet: super::Facet,
     /// The assigned task.
-    pub task: FacetTask,
+    pub task: super::FacetTask,
     /// The number of seconds from the moment the timer was started.
     pub seconds_since_start: u32,
 }
@@ -402,8 +386,8 @@ impl CommandResult for FacetSettings {
         }
         let facet = super::Facet::new(facet)?;
         let task = match task {
-            0 => FacetTask::Simple,
-            1 => FacetTask::Pomodoro(timer_seconds),
+            0 => super::FacetTask::Simple,
+            1 => super::FacetTask::Pomodoro(timer_seconds),
             _ => return Err(FacetSettingsError::InvalidTask(task)),
         };
 
@@ -451,11 +435,11 @@ pub enum SyncType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncState {
     /// The synchronization state.
-    sync: SyncType,
+    pub sync: SyncType,
     /// Detected accelerometer error.
-    accelerometer_error: bool,
+    pub accelerometer_error: bool,
     /// Detected flash error.
-    flash_error: bool,
+    pub flash_error: bool,
 }
 
 impl SyncState {
