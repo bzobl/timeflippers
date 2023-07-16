@@ -42,6 +42,16 @@ enum Command {
         style: HistoryStyle,
     },
     Facet,
+    Notify {
+        #[arg(long, help = "listen for battery events")]
+        battery: bool,
+        #[arg(long, help = "listen for facet events")]
+        facet: bool,
+        #[arg(long, help = "listen for double-tap events")]
+        double_tap: bool,
+        #[arg(long, help = "listen for log events")]
+        log_event: bool,
+    },
     Status,
     SyncState,
     Sync,
@@ -87,6 +97,43 @@ impl Command {
             }
             Facet => {
                 println!("Currently up: {:?}", timeflip.facet().await?);
+            }
+            Notify {
+                battery,
+                facet,
+                double_tap,
+                log_event,
+            } => {
+                if *battery {
+                    timeflip.subscribe_battery_level().await?;
+                }
+                if *facet {
+                    timeflip.subscribe_facet().await?;
+                }
+                if *double_tap {
+                    timeflip.subscribe_double_tap().await?;
+                }
+                if *log_event {
+                    timeflip.subscribe_events().await?;
+                }
+
+                let mut stream = timeflip.event_stream().await?;
+                loop {
+                    match stream.next().await {
+                        Some(Event::BatteryLevel(percent)) => println!("Battery Level {percent}"),
+                        Some(Event::Event(event)) => println!("{event}"),
+                        Some(Event::Facet(facet)) => println!("Currently Up: {facet}"),
+                        Some(Event::DoubleTap { facet, pause }) => println!(
+                            "Facet {facet} has {}",
+                            if pause { "paused" } else { "started" }
+                        ),
+                        Some(Event::Disconnected) => {
+                            println!("TimeFlip has disconnected");
+                            break;
+                        }
+                        None => break,
+                    }
+                }
             }
             Status => {
                 println!("System status: {:?}", timeflip.system_status().await?);
