@@ -35,12 +35,12 @@ impl Position {
     }
 }
 
-pub struct TableHeader {
-    pub columns: Vec<(&'static str, usize)>,
+pub struct TableHeader<'a> {
+    pub columns: Vec<(&'a str, usize)>,
     pub position: Position,
 }
 
-impl fmt::Display for TableHeader {
+impl<'a> fmt::Display for TableHeader<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}─", self.position.left())?;
         for (i, (name, width)) in self.columns.iter().enumerate() {

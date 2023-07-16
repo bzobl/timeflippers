@@ -92,7 +92,8 @@ impl Command {
                 use HistoryStyle::*;
                 match style {
                     Lines => println!("{}", filtered),
-                    Tabular => println!("{}", filtered.table()),
+                    Tabular => println!("{}", filtered.table_by_day()),
+                    Summarized => println!("{}", filtered.summarized()),
                 }
             }
             Facet => {

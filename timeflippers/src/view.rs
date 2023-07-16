@@ -1,5 +1,5 @@
-use chrono::{DateTime, Local, TimeZone, Utc};
-use std::{fmt, time::Duration};
+use chrono::{DateTime, Local, NaiveDate, TimeZone, Utc};
+use std::{collections::HashMap, fmt, time::Duration};
 
 use crate::config::Config;
 use crate::timeflip::Entry;
@@ -56,7 +56,7 @@ impl History {
             entries: self
                 .entries
                 .iter()
-                .filter(|entry| entry.time > date)
+                .filter(|entry| !entry.pause && entry.time > date)
                 .collect(),
             names: &self.names,
         }
@@ -69,11 +69,59 @@ pub struct HistoryFiltered<'a> {
 }
 
 impl<'a> HistoryFiltered<'a> {
+    fn group_by_day(&self) -> Vec<(NaiveDate, Vec<&Entry>)> {
+        let timezone = Local::now().timezone();
+
+        let mut groups = HashMap::<NaiveDate, Vec<&Entry>>::new();
+        for entry in &self.entries {
+            groups
+                .entry(entry.time.with_timezone(&timezone).date_naive())
+                .or_default()
+                .push(entry);
+        }
+
+        let mut sorted = groups.into_iter().collect::<Vec<_>>();
+        sorted.sort_by(|(date_a, _), (date_b, _)| date_a.cmp(date_b));
+        sorted
+    }
+
     pub fn table(&'a self) -> HistoryTable<'a> {
         HistoryTable {
-            entries: &self.entries,
+            groups: vec![(None, self.entries.clone())],
             names: self.names,
         }
+    }
+
+    pub fn table_by_day(&'a self) -> HistoryTable<'a> {
+        let groups = self
+            .group_by_day()
+            .into_iter()
+            .map(|(date, entries)| (Some(format!(" {} ", date)), entries))
+            .collect();
+
+        HistoryTable {
+            groups,
+            names: self.names,
+        }
+    }
+
+    pub fn summarized(&self) -> Summarized {
+        let groups = self
+            .group_by_day()
+            .into_iter()
+            .map(|(date, entries)| {
+                let mut durations = HashMap::<String, Duration>::new();
+                for entry in entries.into_iter() {
+                    let sum = durations
+                        .entry(self.names[entry.facet.index_zero()].clone())
+                        .or_default();
+                    *sum = sum.saturating_add(entry.duration);
+                }
+
+                (date, durations)
+            })
+            .collect();
+        Summarized { groups }
     }
 }
 
@@ -87,9 +135,9 @@ impl<'a> fmt::Display for HistoryFiltered<'a> {
                 "{}",
                 EntryView {
                     entry,
-                    name: &self.names[usize::from(entry.facet.index()) - 1],
+                    name: &self.names[entry.facet.index_zero()],
                     timezone: &timezone,
-                    align_name: 10,
+                    align_name: 12,
                     with_id: true,
                 },
             )?;
@@ -137,13 +185,12 @@ where
 }
 
 pub struct HistoryTable<'a> {
-    entries: &'a [&'a Entry],
+    groups: Vec<(Option<String>, Vec<&'a Entry>)>,
     names: &'a [String],
 }
 
 impl<'a> fmt::Display for HistoryTable<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let timezone = Local::now().timezone();
         const WIDTH_NAME: usize = 15;
         const WIDTH_STARTED: usize = 30;
         const WIDTH_DURATION: usize = 10;
@@ -153,34 +200,27 @@ impl<'a> fmt::Display for HistoryTable<'a> {
             "{}",
             TableHeader {
                 columns: vec![
-                    ("Side", WIDTH_NAME),
-                    ("Started", WIDTH_STARTED),
-                    ("Duration", WIDTH_DURATION)
+                    (" Side ", WIDTH_NAME),
+                    (" Started ", WIDTH_STARTED),
+                    (" Duration ", WIDTH_DURATION)
                 ],
                 position: Position::Top,
             },
         )?;
 
-        for entry in self.entries {
-            if entry.pause {
-                continue;
-            }
-            writeln!(
+        for (name, entries) in &self.groups {
+            write!(
                 f,
-                "│ {} │",
-                EntryTableView {
-                    entry,
-                    name: &self.names[usize::from(entry.facet.index() - 1)],
-                    timezone: &timezone,
-                    separator: "│",
-                    width_name: WIDTH_NAME,
-                    width_started: WIDTH_STARTED,
-                    width_duration: WIDTH_DURATION,
-                },
+                "{}",
+                GroupTable {
+                    group: name.as_deref(),
+                    entries: &entries[..],
+                    names: &self.names,
+                }
             )?;
         }
 
-        writeln!(
+        write!(
             f,
             "{}",
             TableHeader {
@@ -193,25 +233,73 @@ impl<'a> fmt::Display for HistoryTable<'a> {
     }
 }
 
-struct EntryTableView<'a, 'b, T: TimeZone> {
+struct GroupTable<'a> {
+    group: Option<&'a str>,
+    entries: &'a [&'a Entry],
+    names: &'a [String],
+}
+
+impl<'a> fmt::Display for GroupTable<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let timezone = Local::now().timezone();
+        const WIDTH_NAME: usize = 15;
+        const WIDTH_STARTED: usize = 30;
+        const WIDTH_DURATION: usize = 10;
+
+        if let Some(group_name) = self.group {
+            writeln!(
+                f,
+                "{}",
+                TableHeader {
+                    columns: vec![
+                        ("", WIDTH_NAME),
+                        (group_name, WIDTH_STARTED),
+                        ("", WIDTH_DURATION),
+                    ],
+                    position: Position::Center,
+                }
+            )?;
+        }
+
+        for entry in self.entries {
+            writeln!(
+                f,
+                "│ {} │",
+                EntryTableView {
+                    entry,
+                    name: &self.names[entry.facet.index_zero()],
+                    timezone: &timezone,
+                    separator: "│",
+                    width_name: WIDTH_NAME,
+                    width_started: WIDTH_STARTED,
+                    width_duration: WIDTH_DURATION,
+                },
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
+struct EntryTableView<'a, T: TimeZone> {
     entry: &'a Entry,
     name: &'a str,
-    timezone: &'b T,
+    timezone: &'a T,
 
-    separator: &'b str,
+    separator: &'a str,
     width_name: usize,
     width_started: usize,
     width_duration: usize,
 }
 
-impl<'a, 'b, T> fmt::Display for EntryTableView<'a, 'b, T>
+impl<'a, T> fmt::Display for EntryTableView<'a, T>
 where
     T: TimeZone,
     <T as TimeZone>::Offset: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let line = format!(
-            "{:<width_name$}{}{:<width_started$}{}{:>width_duration$}",
+            "{:<width_name$}{}{:^width_started$}{}{:>width_duration$}",
             self.name,
             self.separator,
             self.entry.time.with_timezone(self.timezone).to_string(),
@@ -223,5 +311,56 @@ where
         );
 
         f.pad(&line)
+    }
+}
+
+pub struct Summarized {
+    groups: Vec<(NaiveDate, HashMap<String, Duration>)>,
+}
+
+impl fmt::Display for Summarized {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        const WIDTH_NAME: usize = 20;
+        const WIDTH_DURATION: usize = 10;
+
+        writeln!(
+            f,
+            "{}",
+            TableHeader {
+                columns: vec![(" Side ", WIDTH_NAME), (" Duration ", WIDTH_DURATION)],
+                position: Position::Top,
+            },
+        )?;
+
+        for (time, durations) in self.groups.iter() {
+            writeln!(
+                f,
+                "{}",
+                TableHeader {
+                    columns: vec![(&time.to_string(), WIDTH_NAME), ("", WIDTH_DURATION)],
+                    position: Position::Center,
+                },
+            )?;
+
+            for (facet, duration) in durations.iter() {
+                writeln!(
+                    f,
+                    "│ {:<width_name$}│{:>width_duration$} │",
+                    facet,
+                    DurationView(&duration),
+                    width_name = WIDTH_NAME,
+                    width_duration = WIDTH_DURATION,
+                )?;
+            }
+        }
+
+        write!(
+            f,
+            "{}",
+            TableHeader {
+                columns: vec![("", WIDTH_NAME), ("", WIDTH_DURATION)],
+                position: Position::Bottom,
+            },
+        )
     }
 }
