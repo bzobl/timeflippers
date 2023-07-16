@@ -93,5 +93,5 @@ where
     D: de::Deserializer<'de>,
 {
     let sides = Vec::<Side>::deserialize(deserializer)?;
-    sides_from_vec(sides).map_err(|e| Error::custom(e))
+    sides_from_vec(sides).map_err(Error::custom)
 }

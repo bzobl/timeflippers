@@ -44,14 +44,14 @@ impl History {
         }
     }
 
-    pub fn all<'a>(&'a self) -> HistoryFiltered<'a> {
+    pub fn all(&self) -> HistoryFiltered<'_> {
         HistoryFiltered {
             entries: self.entries.iter().collect(),
             names: &self.names,
         }
     }
 
-    pub fn since<'a>(&'a self, date: DateTime<Utc>) -> HistoryFiltered<'a> {
+    pub fn since(&self, date: DateTime<Utc>) -> HistoryFiltered<'_> {
         HistoryFiltered {
             entries: self
                 .entries
@@ -215,7 +215,7 @@ impl<'a> fmt::Display for HistoryTable<'a> {
                 GroupTable {
                     group: name.as_deref(),
                     entries: &entries[..],
-                    names: &self.names,
+                    names: self.names,
                 }
             )?;
         }
@@ -347,7 +347,7 @@ impl fmt::Display for Summarized {
                     f,
                     "│ {:<width_name$}│{:>width_duration$} │",
                     facet,
-                    DurationView(&duration),
+                    DurationView(duration),
                     width_name = WIDTH_NAME,
                     width_duration = WIDTH_DURATION,
                 )?;
