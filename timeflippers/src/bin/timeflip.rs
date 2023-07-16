@@ -1,11 +1,13 @@
 use chrono::{offset::Local, DateTime, NaiveDate};
 use clap::{Parser, Subcommand, ValueEnum};
 use futures::StreamExt;
-use std::path::{Path, PathBuf};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 use timeflippers::{
-    timeflip::{Event, TimeFlip},
-    view::History,
-    BluetoothSession, Config,
+    timeflip::{Entry, Event, TimeFlip},
+    view, BluetoothSession, Config,
 };
 use tokio::{fs, select, signal};
 
@@ -15,7 +17,12 @@ async fn read_config(path: impl AsRef<Path>) -> anyhow::Result<Config> {
     Ok(config)
 }
 
+/// Communicate with a TimeFlip2 cube.
+///
+/// Note: Use `bluetoothctl` to pair (and potentially connect) the TimeFlip2.
+/// Currently, the TimeFlip2's password is expected to be the default value.
 #[derive(Parser)]
+#[clap(about)]
 struct Options {
     #[command(subcommand)]
     cmd: Command,
@@ -30,18 +37,28 @@ enum HistoryStyle {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Print the current battery level.
     Battery,
-    Events {
+    /// Print logged TimeFlip events.
+    History {
         #[arg(help = "path to the timeflip.toml file")]
         config: PathBuf,
-        #[arg(long, help = "start reading with entry ID", default_value = "0")]
+        #[arg(long, help = "read events from and write new events to file")]
+        update: Option<PathBuf>,
+        #[arg(
+            long,
+            help = "start reading with entry ID, latest event in `--update` takes precedence",
+            default_value = "0"
+        )]
         start_with: u32,
         #[arg(long, help = "start displaying with entries after DATE (YYYY-MM-DD)")]
         since: Option<NaiveDate>,
         #[arg(long, help = "choose output style", default_value = "tabular")]
         style: HistoryStyle,
     },
+    /// Print the facet currently facing up.
     Facet,
+    /// Subscribe to properties and get notified if they change.
     Notify {
         #[arg(long, help = "listen for battery events")]
         battery: bool,
@@ -52,10 +69,18 @@ enum Command {
         #[arg(long, help = "listen for log events")]
         log_event: bool,
     },
+    /// Print the TimeFlip2's system status.
     Status,
+    /// Get the TimeFlip2's synchronization state.
     SyncState,
-    Sync,
+    /// Synchronize TimeFlip2. Do nothing if the cube reports it is synchronized.
+    Sync {
+        #[arg(help = "path to the timeflip.toml file")]
+        config: PathBuf,
+    },
+    /// Get the TimeFlip2's current time.
     Time,
+    /// Write config from the toml file to the TimeFlip2's memory.
     WriteConfig {
         #[arg(help = "path to the timeflip.toml file")]
         config: PathBuf,
@@ -69,16 +94,47 @@ impl Command {
             Battery => {
                 println!("Battery level: {}%", timeflip.battery_level().await?);
             }
-            Events {
+            History {
                 config,
+                update: update_file,
                 start_with,
                 style,
                 since,
             } => {
                 let config = read_config(config).await?;
 
-                let entries = timeflip.read_history_since(*start_with).await?;
-                let history = History::new(entries, config);
+                let (start_with, mut entries) = if let Some(file) = update_file {
+                    match fs::read_to_string(file).await {
+                        Ok(s) => {
+                            let mut entries: Vec<Entry> = serde_json::from_str(&s)?;
+                            entries.sort_by(|a, b| a.id.cmp(&b.id));
+                            (entries.last().map(|e| e.id).unwrap_or(0), entries)
+                        }
+                        Err(e) if e.kind() == io::ErrorKind::NotFound => (0, vec![]),
+                        Err(e) => return Err(e.into()),
+                    }
+                } else {
+                    (*start_with, vec![])
+                };
+
+                let mut update = timeflip.read_history_since(start_with).await?;
+
+                let new_ids = update.iter().map(|e| e.id).collect::<Vec<_>>();
+                entries.retain(|entry| !new_ids.contains(&entry.id));
+                entries.append(&mut update);
+
+                if let Some(file) = update_file {
+                    match serde_json::to_vec(&entries) {
+                        Ok(json) => {
+                            if let Err(e) = fs::write(file, json).await {
+                                eprintln!("cannot update entries file {}: {e}", file.display());
+                            }
+                        }
+                        Err(e) => eprintln!("cannot update entries file {}: {e}", file.display()),
+                    }
+                }
+
+                let history = view::History::new(entries, config);
                 let filtered = if let Some(since) = since {
                     let date = DateTime::<Local>::from_local(
                         since.and_hms_opt(0, 0, 0).expect("is a valid time"),
@@ -142,9 +198,8 @@ impl Command {
             SyncState => {
                 println!("Sync state: {:?}", timeflip.sync_state().await?);
             }
-            Sync => {
-                // TODO read config from file
-                let config = Config::default();
+            Sync { config } => {
+                let config = read_config(config).await?;
                 timeflip.sync(&config).await?;
             }
             Time => {

@@ -5,7 +5,7 @@ auto_pause = 480
 
 [[sides]]
 facet = 1
-name = "KaffeePause"
+name = "(Kaffee) Pause"
 color.red = 0
 color.green = 0
 color.blue = 0xFFFF

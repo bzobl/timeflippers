@@ -7,6 +7,7 @@ use bluez_async::{
 };
 use bytes::{Buf, BufMut};
 use chrono::{offset::Local, DateTime, NaiveDateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, fmt, num::TryFromIntError, string::FromUtf8Error, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
@@ -491,7 +492,7 @@ pub enum EntryError {
 }
 
 /// An entry from TimeFlip2's history.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entry {
     /// ID of the entry.
     pub id: u32,

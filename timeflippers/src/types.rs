@@ -1,6 +1,6 @@
 use serde::{
     de::{self, Error},
-    Deserialize,
+    ser, Deserialize, Serialize,
 };
 use std::{default::Default, fmt};
 use thiserror::Error;
@@ -144,6 +144,15 @@ impl Facet {
 impl fmt::Display for Facet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Facet({})", self.0)
+    }
+}
+
+impl Serialize for Facet {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        usize::serialize(&usize::from(self.0), serializer)
     }
 }
 

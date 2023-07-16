@@ -8,12 +8,13 @@ edition = "2021"
 anyhow = "1.0.72"
 bluez-async = "0.7.2"
 bytes = "1.4.0"
-chrono = "0.4.26"
+chrono = { version = "0.4.26", features = ["serde"] }
 clap = { version = "4.3.11", features = ["derive"] }
 env_logger = "0.10.0"
 futures = "0.3.28"
 log = "0.4.19"
 serde = { version = "1.0.171", features = ["derive"] }
+serde_json = "1.0.103"
 thiserror = "1.0.40"
 tokio = { version = "1.28.2", features = ["fs" ,"macros", "rt-multi-thread", "signal", "time"] }
 toml = "0.7.6"
