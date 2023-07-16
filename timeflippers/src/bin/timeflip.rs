@@ -58,6 +58,10 @@ enum Command {
     },
     /// Print the facet currently facing up.
     Facet,
+    /// Put the TimeFlip2 in lock mode.
+    Lock,
+    /// Release the TimeFlip2 from lock mode.
+    Unlock,
     /// Subscribe to properties and get notified if they change.
     Notify {
         #[arg(long, help = "listen for battery events")]
@@ -69,6 +73,10 @@ enum Command {
         #[arg(long, help = "listen for log events")]
         log_event: bool,
     },
+    /// Put the TimeFlip2 into pause mode.
+    Pause,
+    /// Release the TimeFlip2 from pause mode.
+    Unpause,
     /// Print the TimeFlip2's system status.
     Status,
     /// Get the TimeFlip2's synchronization state.
@@ -155,6 +163,8 @@ impl Command {
             Facet => {
                 println!("Currently up: {:?}", timeflip.facet().await?);
             }
+            Lock => timeflip.lock().await?,
+            Unlock => timeflip.unlock().await?,
             Notify {
                 battery,
                 facet,
@@ -192,6 +202,8 @@ impl Command {
                     }
                 }
             }
+            Pause => timeflip.pause().await?,
+            Unpause => timeflip.unpause().await?,
             Status => {
                 println!("System status: {:?}", timeflip.system_status().await?);
             }
