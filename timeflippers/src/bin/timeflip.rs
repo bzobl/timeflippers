@@ -185,51 +185,5 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    return Ok(());
-
-    log::info!("Last event: {}", timeflip.last_event().await?);
-    log::info!("Reading history");
-    let history = timeflip.read_history_since(270).await?;
-    for entry in history {
-        log::info!("{}", entry);
-    }
-    log::info!(
-        "Reading last event: {}",
-        timeflip.read_last_history_entry().await?
-    );
-
-    log::info!(
-        "Settings of Facet(1): {:?}",
-        timeflip.get_task(Facet::new(1).unwrap()).await?,
-    );
-
-    timeflip.subscribe_battery_level().await?;
-    timeflip.subscribe_events().await?;
-    timeflip.subscribe_facet().await?;
-    timeflip.subscribe_double_tap().await?;
-    let mut stream = timeflip.event_stream().await?;
-
-    log::info!("Waiting for events");
-
-    loop {
-        select! {
-            event = stream.next() => {
-                log::info!("New event: {event:?}");
-            }
-            _ = signal::ctrl_c() => {
-                log::info!("shutting down");
-                break;
-            }
-            res = &mut bg_task => {
-                if let Err(e) =res {
-                    log::error!("bluetooth session background task exited with error: {e}");
-                }
-                break;
-            }
-        }
-    }
-
-    //timeflip.disconnect().await?;
-
     Ok(())
 }
