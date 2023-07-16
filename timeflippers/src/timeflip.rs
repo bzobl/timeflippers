@@ -194,7 +194,7 @@ impl TimeFlip {
             .await?;
 
         match data.first() {
-            Some(v) => Percent::new(*v).map_err(Error::InvalidBatteryLevel),
+            Some(v) => Percent::new((*v).into()).map_err(Error::InvalidBatteryLevel),
             None => Err(Error::ReadTooShort(data.len(), 1)),
         }
     }
@@ -233,7 +233,7 @@ impl TimeFlip {
             .await?;
 
         match data.first() {
-            Some(facet) => Ok(Facet::new(*facet)?),
+            Some(facet) => Ok(Facet::new(usize::from(*facet))?),
             None => Err(Error::ReadTooShort(data.len(), 1)),
         }
     }
@@ -300,23 +300,27 @@ impl TimeFlip {
 
     /// Set the brightness of the TimeFlip2's LED.
     pub async fn brightness(&self, value: Percent) -> Result<(), Error> {
+        log::info!("writing brightness {value} to TimeFlip2");
         self.command::<()>(gatt::Command::Brightness(value)).await
     }
 
     /// Set the blink interval of the TimeFlip2's LED.
     pub async fn blink_interval(&self, value: BlinkInterval) -> Result<(), Error> {
+        log::info!("writing blink interval {value} to TimeFlip2");
         self.command::<()>(gatt::Command::BlinkInterval(value))
             .await
     }
 
     /// Set the color of a facet's LED.
     pub async fn color(&self, facet: Facet, color: Color) -> Result<(), Error> {
+        log::info!("writing color of facet {facet}: {color}");
         self.command::<()>(gatt::Command::SetColor { facet, color })
             .await
     }
 
     /// Set a facet's task.
     pub async fn task(&self, facet: Facet, task: FacetTask) -> Result<(), Error> {
+        log::info!("writing task of facet {facet}: {task}");
         self.command::<()>(gatt::Command::SetTaskParameter(facet, task))
             .await
     }
@@ -329,26 +333,31 @@ impl TimeFlip {
 
     /// Put the TimeFlip2 into lock mode.
     pub async fn lock(&self) -> Result<(), Error> {
+        log::info!("locking TimeFlip2");
         self.command::<()>(gatt::Command::LockMode(true)).await
     }
 
     /// Release the TimeFlip2 from lock mode.
     pub async fn unlock(&self) -> Result<(), Error> {
+        log::info!("unlocking TimeFlip2");
         self.command::<()>(gatt::Command::LockMode(false)).await
     }
 
     /// Put the TimeFlip2 into pause mode.
     pub async fn pause(&self) -> Result<(), Error> {
+        log::info!("pausing TimeFlip2");
         self.command::<()>(gatt::Command::PauseMode(true)).await
     }
 
     /// Release the TimeFlip2 from pause mode.
     pub async fn unpause(&self) -> Result<(), Error> {
+        log::info!("unpausing TimeFlip2");
         self.command::<()>(gatt::Command::PauseMode(false)).await
     }
 
     /// Set the TimeFlip2's auto pause time.
     pub async fn auto_pause(&self, time: Minutes) -> Result<(), Error> {
+        log::info!("writing auto pause after {time} to TimeFlip2");
         self.command::<()>(gatt::Command::AutoPauseTime(time)).await
     }
 
@@ -390,7 +399,7 @@ impl TimeFlip {
                 }
                 FacetColor => {
                     for (i, side) in config.sides.iter().enumerate() {
-                        let facet = Facet::new(i as u8 + 1)?;
+                        let facet = Facet::new(i + 1)?;
                         self.color(facet, side.color.clone()).await?;
                     }
                 }
@@ -402,7 +411,7 @@ impl TimeFlip {
                 }
                 TaskParameters => {
                     for (i, side) in config.sides.iter().enumerate() {
-                        let facet = Facet::new(i as u8 + 1u8)?;
+                        let facet = Facet::new(i + 1)?;
                         self.task(facet, side.task.clone()).await?;
                     }
                 }
@@ -422,7 +431,7 @@ impl TimeFlip {
         self.blink_interval(config.blink_interval).await?;
         self.auto_pause(config.auto_pause).await?;
         for (i, side) in config.sides.into_iter().enumerate() {
-            let facet = Facet::new(i as u8 + 1u8)?;
+            let facet = Facet::new(i + 1)?;
             self.color(facet.clone(), side.color).await?;
             self.task(facet.clone(), side.task).await?;
         }

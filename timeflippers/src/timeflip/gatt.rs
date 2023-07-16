@@ -384,7 +384,7 @@ impl CommandResult for FacetSettings {
         if cmd != 0x14 {
             return Err(FacetSettingsError::InvalidCommand(cmd));
         }
-        let facet = super::Facet::new(facet)?;
+        let facet = super::Facet::new(usize::from(facet))?;
         let task = match task {
             0 => super::FacetTask::Simple,
             1 => super::FacetTask::Pomodoro(timer_seconds),
@@ -528,7 +528,7 @@ impl Entry {
 
         Ok(Entry {
             id,
-            facet: super::Facet::new(facet)?,
+            facet: super::Facet::new(usize::from(facet))?,
             pause,
             time: NaiveDateTime::from_timestamp_opt(
                 start_time
@@ -629,7 +629,7 @@ impl Event {
                     value
                         .first()
                         .ok_or(EventError::TooShort("Battery Level".into()))
-                        .and_then(|v| super::Percent::new(*v).map_err(Into::into))
+                        .and_then(|v| super::Percent::new(usize::from(*v)).map_err(Into::into))
                         .map(Event::BatteryLevel)
                 } else if id == handles.last_event {
                     log::debug!("Eventlog event");
@@ -641,7 +641,7 @@ impl Event {
                     value
                         .first()
                         .ok_or(EventError::TooShort("Facet".into()))
-                        .and_then(|v| super::Facet::new(*v).map_err(Into::into))
+                        .and_then(|v| super::Facet::new(usize::from(*v)).map_err(Into::into))
                         .map(Event::Facet)
                 } else if id == handles.double_tap {
                     log::debug!("DoubleTap event");
@@ -654,7 +654,7 @@ impl Event {
                             } else {
                                 (*v, false)
                             };
-                            super::Facet::new(facet)
+                            super::Facet::new(usize::from(facet))
                                 .map(|facet| Event::DoubleTap { facet, pause })
                                 .map_err(EventError::DoubleTap)
                         })

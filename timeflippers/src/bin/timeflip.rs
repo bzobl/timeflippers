@@ -1,12 +1,19 @@
 use chrono::{offset::Local, DateTime, NaiveDate};
 use clap::{Parser, Subcommand, ValueEnum};
-use futures::stream::StreamExt;
+use futures::StreamExt;
+use std::path::{Path, PathBuf};
 use timeflippers::{
-    timeflip::{Error, TimeFlip},
+    timeflip::{Event, TimeFlip},
     view::History,
-    BluetoothSession, Config, Facet,
+    BluetoothSession, Config,
 };
-use tokio::{select, signal};
+use tokio::{fs, select, signal};
+
+async fn read_config(path: impl AsRef<Path>) -> anyhow::Result<Config> {
+    let toml = fs::read_to_string(path).await?;
+    let config: Config = toml::from_str(&toml)?;
+    Ok(config)
+}
 
 #[derive(Parser)]
 struct Options {
@@ -18,12 +25,15 @@ struct Options {
 enum HistoryStyle {
     Lines,
     Tabular,
+    Summarized,
 }
 
 #[derive(Subcommand)]
 enum Command {
     Battery,
     Events {
+        #[arg(help = "path to the timeflip.toml file")]
+        config: PathBuf,
         #[arg(long, help = "start reading with entry ID", default_value = "0")]
         start_with: u32,
         #[arg(long, help = "start displaying with entries after DATE (YYYY-MM-DD)")]
@@ -36,23 +46,26 @@ enum Command {
     SyncState,
     Sync,
     Time,
-    WriteConfig,
+    WriteConfig {
+        #[arg(help = "path to the timeflip.toml file")]
+        config: PathBuf,
+    },
 }
 
 impl Command {
-    async fn run(&self, timeflip: &mut TimeFlip) -> Result<(), Error> {
+    async fn run(&self, timeflip: &mut TimeFlip) -> anyhow::Result<()> {
         use Command::*;
         match self {
             Battery => {
                 println!("Battery level: {}%", timeflip.battery_level().await?);
             }
             Events {
+                config,
                 start_with,
                 style,
                 since,
             } => {
-                let mut config = Config::default();
-                config.sides[0].name = Some("Kaffee".into());
+                let config = read_config(config).await?;
 
                 let entries = timeflip.read_history_since(*start_with).await?;
                 let history = History::new(entries, config);
@@ -91,9 +104,8 @@ impl Command {
                 let time = timeflip.time().await?;
                 println!("Time set on TimeFlip: {}", time.with_timezone(&tz));
             }
-            WriteConfig => {
-                // TODO read config from file
-                let config = Config::default();
+            WriteConfig { config } => {
+                let config = read_config(config).await?;
                 timeflip.write_config(config).await?;
             }
         }
@@ -102,7 +114,7 @@ impl Command {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Error> {
+async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let opt = Options::parse();

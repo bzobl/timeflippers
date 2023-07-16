@@ -1,0 +1,28 @@
+password = [ 0, 0, 0, 0, 0, 0 ]
+brightness = 100
+blink_interval = 30
+auto_pause = 480
+
+[[sides]]
+facet = 1
+name = "KaffeePause"
+color.red = 0
+color.green = 0
+color.blue = 0xFFFF
+task = "Simple"
+
+[[sides]]
+facet = 8
+name = "Projekzeit"
+color.red = 0xFFFF
+color.green = 0xFFFF
+color.blue = 0xFFFF
+task = "Simple"
+
+[[sides]]
+facet = 12
+name = "Infrastruktur"
+color.red = 0xFFFF
+color.green = 0
+color.blue = 0
+task = "Simple"
