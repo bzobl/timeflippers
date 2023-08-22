@@ -1,3 +1,4 @@
+use anyhow::format_err;
 use chrono::{offset::Local, DateTime, NaiveDate};
 use clap::{Parser, Subcommand, ValueEnum};
 use futures::StreamExt;
@@ -7,7 +8,7 @@ use std::{
 };
 use timeflippers::{
     timeflip::{Entry, Event, TimeFlip},
-    view, BluetoothSession, Config,
+    view, BluetoothSession, Config, Facet,
 };
 use tokio::{fs, select, signal};
 
@@ -17,6 +18,12 @@ async fn read_config(path: impl AsRef<Path>) -> anyhow::Result<Config> {
     Ok(config)
 }
 
+fn facet_name(facet: &Facet, config: Option<&Config>) -> String {
+    config
+        .and_then(|config| config.sides[facet.index_zero()].name.clone())
+        .unwrap_or(facet.to_string())
+}
+
 /// Communicate with a TimeFlip2 cube.
 ///
 /// Note: Use `bluetoothctl` to pair (and potentially connect) the TimeFlip2.
@@ -24,6 +31,8 @@ async fn read_config(path: impl AsRef<Path>) -> anyhow::Result<Config> {
 #[derive(Parser)]
 #[clap(about)]
 struct Options {
+    #[arg(short, long, help = "path to the timeflip.toml file")]
+    config: Option<PathBuf>,
     #[command(subcommand)]
     cmd: Command,
 }
@@ -41,16 +50,13 @@ enum Command {
     Battery,
     /// Print logged TimeFlip events.
     History {
-        #[arg(help = "path to the timeflip.toml file")]
-        config: PathBuf,
         #[arg(long, help = "read events from and write new events to file")]
         update: Option<PathBuf>,
         #[arg(
             long,
-            help = "start reading with entry ID, latest event in `--update` takes precedence",
-            default_value = "0"
+            help = "start reading with entry ID, latest event in `--update` takes precedence"
         )]
-        start_with: u32,
+        start_with: Option<u32>,
         #[arg(long, help = "start displaying with entries after DATE (YYYY-MM-DD)")]
         since: Option<NaiveDate>,
         #[arg(long, help = "choose output style", default_value = "tabular")]
@@ -82,47 +88,47 @@ enum Command {
     /// Get the TimeFlip2's synchronization state.
     SyncState,
     /// Synchronize TimeFlip2. Do nothing if the cube reports it is synchronized.
-    Sync {
-        #[arg(help = "path to the timeflip.toml file")]
-        config: PathBuf,
-    },
+    Sync,
     /// Get the TimeFlip2's current time.
     Time,
     /// Write config from the toml file to the TimeFlip2's memory.
-    WriteConfig {
-        #[arg(help = "path to the timeflip.toml file")]
-        config: PathBuf,
-    },
+    WriteConfig,
 }
 
 impl Command {
-    async fn run(&self, timeflip: &mut TimeFlip) -> anyhow::Result<()> {
+    async fn run(&self, timeflip: &mut TimeFlip, config: Option<Config>) -> anyhow::Result<()> {
         use Command::*;
         match self {
             Battery => {
                 println!("Battery level: {}", timeflip.battery_level().await?);
             }
             History {
-                config,
                 update: update_file,
                 start_with,
                 style,
                 since,
             } => {
-                let config = read_config(config).await?;
+                let config = config.ok_or(format_err!("config is mandatory for this command"))?;
 
                 let (start_with, mut entries) = if let Some(file) = update_file {
                     match fs::read_to_string(file).await {
                         Ok(s) => {
                             let mut entries: Vec<Entry> = serde_json::from_str(&s)?;
                             entries.sort_by(|a, b| a.id.cmp(&b.id));
-                            (entries.last().map(|e| e.id).unwrap_or(0), entries)
+                            (
+                                start_with
+                                    .or_else(|| entries.last().map(|e| e.id))
+                                    .unwrap_or(0),
+                                entries,
+                            )
                         }
-                        Err(e) if e.kind() == io::ErrorKind::NotFound => (0, vec![]),
+                        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                            (start_with.unwrap_or(0), vec![])
+                        }
                         Err(e) => return Err(e.into()),
                     }
                 } else {
-                    (*start_with, vec![])
+                    (start_with.unwrap_or(0), vec![])
                 };
 
                 let mut update = timeflip.read_history_since(start_with).await?;
@@ -161,7 +167,8 @@ impl Command {
                 }
             }
             Facet => {
-                println!("Currently up: {:?}", timeflip.facet().await?);
+                let facet = timeflip.facet().await?;
+                println!("Currently up: {}", facet_name(&facet, config.as_ref()));
             }
             Lock => timeflip.lock().await?,
             Unlock => timeflip.unlock().await?,
@@ -189,9 +196,12 @@ impl Command {
                     match stream.next().await {
                         Some(Event::BatteryLevel(percent)) => println!("Battery Level {percent}"),
                         Some(Event::Event(event)) => println!("{event}"),
-                        Some(Event::Facet(facet)) => println!("Currently Up: {facet}"),
+                        Some(Event::Facet(facet)) => {
+                            println!("Currently Up: {}", facet_name(&facet, config.as_ref()))
+                        }
                         Some(Event::DoubleTap { facet, pause }) => println!(
-                            "Facet {facet} has {}",
+                            "Facet {} has {}",
+                            facet_name(&facet, config.as_ref()),
                             if pause { "paused" } else { "started" }
                         ),
                         Some(Event::Disconnected) => {
@@ -210,8 +220,8 @@ impl Command {
             SyncState => {
                 println!("Sync state: {:?}", timeflip.sync_state().await?);
             }
-            Sync { config } => {
-                let config = read_config(config).await?;
+            Sync => {
+                let config = config.ok_or(format_err!("config is mandatory for this command"))?;
                 timeflip.sync(&config).await?;
             }
             Time => {
@@ -219,8 +229,8 @@ impl Command {
                 let time = timeflip.time().await?;
                 println!("Time set on TimeFlip: {}", time.with_timezone(&tz));
             }
-            WriteConfig { config } => {
-                let config = read_config(config).await?;
+            WriteConfig => {
+                let config = config.ok_or(format_err!("config is mandatory for this command"))?;
                 timeflip.write_config(config).await?;
             }
         }
@@ -233,6 +243,11 @@ async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let opt = Options::parse();
+    let config = if let Some(path) = opt.config {
+        Some(read_config(path).await?)
+    } else {
+        None
+    };
 
     let (mut bg_task, session) = BluetoothSession::new().await?;
 
@@ -248,7 +263,7 @@ async fn main() -> anyhow::Result<()> {
                 log::error!("bluetooth session background task exited with error: {e}");
             }
         }
-        res = opt.cmd.run(&mut timeflip) => {
+        res = opt.cmd.run(&mut timeflip, config) => {
             res?;
         }
     }
