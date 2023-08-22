@@ -100,7 +100,7 @@ impl Command {
         use Command::*;
         match self {
             Battery => {
-                println!("Battery level: {}%", timeflip.battery_level().await?);
+                println!("Battery level: {}", timeflip.battery_level().await?);
             }
             History {
                 config,
