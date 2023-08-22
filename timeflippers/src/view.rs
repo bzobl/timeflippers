@@ -129,6 +129,8 @@ impl<'a> fmt::Display for HistoryFiltered<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let timezone = Local::now().timezone();
 
+        let align_name = self.names.iter().map(String::len).max().unwrap_or(12);
+
         for entry in &self.entries {
             writeln!(
                 f,
@@ -137,7 +139,7 @@ impl<'a> fmt::Display for HistoryFiltered<'a> {
                     entry,
                     name: &self.names[entry.facet.index_zero()],
                     timezone: &timezone,
-                    align_name: 12,
+                    align_name,
                     with_id: true,
                 },
             )?;
@@ -191,16 +193,17 @@ pub struct HistoryTable<'a> {
 
 impl<'a> fmt::Display for HistoryTable<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        const WIDTH_NAME: usize = 15;
         const WIDTH_STARTED: usize = 30;
         const WIDTH_DURATION: usize = 10;
+
+        let width_name = self.names.iter().map(String::len).max().unwrap_or(15) + 1;
 
         writeln!(
             f,
             "{}",
             TableHeader {
                 columns: vec![
-                    (" Side ", WIDTH_NAME),
+                    (" Side ", width_name),
                     (" Started ", WIDTH_STARTED),
                     (" Duration ", WIDTH_DURATION)
                 ],
@@ -224,7 +227,7 @@ impl<'a> fmt::Display for HistoryTable<'a> {
             f,
             "{}",
             TableHeader {
-                columns: vec![("", WIDTH_NAME), ("", WIDTH_STARTED), ("", WIDTH_DURATION)],
+                columns: vec![("", width_name), ("", WIDTH_STARTED), ("", WIDTH_DURATION)],
                 position: Position::Bottom,
             },
         )?;
@@ -242,9 +245,9 @@ struct GroupTable<'a> {
 impl<'a> fmt::Display for GroupTable<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let timezone = Local::now().timezone();
-        const WIDTH_NAME: usize = 15;
         const WIDTH_STARTED: usize = 30;
         const WIDTH_DURATION: usize = 10;
+        let width_name = self.names.iter().map(String::len).max().unwrap_or(15) + 1;
 
         if let Some(group_name) = self.group {
             writeln!(
@@ -252,7 +255,7 @@ impl<'a> fmt::Display for GroupTable<'a> {
                 "{}",
                 TableHeader {
                     columns: vec![
-                        ("", WIDTH_NAME),
+                        ("", width_name),
                         (group_name, WIDTH_STARTED),
                         ("", WIDTH_DURATION),
                     ],
@@ -270,7 +273,7 @@ impl<'a> fmt::Display for GroupTable<'a> {
                     name: &self.names[entry.facet.index_zero()],
                     timezone: &timezone,
                     separator: "│",
-                    width_name: WIDTH_NAME,
+                    width_name,
                     width_started: WIDTH_STARTED,
                     width_duration: WIDTH_DURATION,
                 },
@@ -320,14 +323,20 @@ pub struct Summarized {
 
 impl fmt::Display for Summarized {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        const WIDTH_NAME: usize = 20;
         const WIDTH_DURATION: usize = 10;
+        let width_name = self
+            .groups
+            .iter()
+            .filter_map(|(_, entries)| entries.keys().map(String::len).max())
+            .max()
+            .unwrap_or(15)
+            + 1;
 
         writeln!(
             f,
             "{}",
             TableHeader {
-                columns: vec![(" Side ", WIDTH_NAME), (" Duration ", WIDTH_DURATION)],
+                columns: vec![(" Side ", width_name), (" Duration ", WIDTH_DURATION)],
                 position: Position::Top,
             },
         )?;
@@ -337,7 +346,7 @@ impl fmt::Display for Summarized {
                 f,
                 "{}",
                 TableHeader {
-                    columns: vec![(&time.to_string(), WIDTH_NAME), ("", WIDTH_DURATION)],
+                    columns: vec![(&time.to_string(), width_name), ("", WIDTH_DURATION)],
                     position: Position::Center,
                 },
             )?;
@@ -348,7 +357,7 @@ impl fmt::Display for Summarized {
                     "│ {:<width_name$}│{:>width_duration$} │",
                     facet,
                     DurationView(duration),
-                    width_name = WIDTH_NAME,
+                    width_name = width_name,
                     width_duration = WIDTH_DURATION,
                 )?;
             }
@@ -358,7 +367,7 @@ impl fmt::Display for Summarized {
             f,
             "{}",
             TableHeader {
-                columns: vec![("", WIDTH_NAME), ("", WIDTH_DURATION)],
+                columns: vec![("", width_name), ("", WIDTH_DURATION)],
                 position: Position::Bottom,
             },
         )
