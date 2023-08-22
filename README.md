@@ -9,7 +9,7 @@ We rely on bluez to communicate with the dice. In order to connect, the
 following steps are necessary:
 
 - open `bluetoothctl` interactively
-- view the attached bluetooth controller: `devices`
+- view the attached bluetooth controller: `list`
 - you can view more detailed information: `show 00:11:22:33:44:55`
 - if more than one bluetooth controller is available, select one: `select 00:11:22:33:44:55`
 - make sure you have power: `power on`
@@ -19,7 +19,7 @@ following steps are necessary:
 - pair with the dice: `pair EB:12:A0:12:34:56`
   (This should automatically connect it)
 - turn off scanning: `scan off`
-- check the dice with: `show EB:12:A0:12:34:56`, this should show some
+- check the dice with: `info EB:12:A0:12:34:56`, this should show some
   thing like
   ```
   Device EB:12:A0:12:34:56 (random)
