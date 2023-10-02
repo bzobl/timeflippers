@@ -351,7 +351,11 @@ impl fmt::Display for Summarized {
                 },
             )?;
 
-            for (facet, duration) in durations.iter() {
+            let mut facets: Vec<_> = durations.keys().collect();
+            facets.sort_unstable();
+
+            for facet in facets {
+                let duration = durations.get(facet).expect("key does exist");
                 writeln!(
                     f,
                     "│ {:<width_name$}│{:>width_duration$} │",
