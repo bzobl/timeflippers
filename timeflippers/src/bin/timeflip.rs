@@ -90,7 +90,10 @@ enum Command {
     /// Synchronize TimeFlip2. Do nothing if the cube reports it is synchronized.
     Sync,
     /// Get the TimeFlip2's current time.
-    Time,
+    Time {
+        #[arg(long, help = "set TimeFlip2's time to the current time")]
+        set: bool,
+    },
     /// Write config from the toml file to the TimeFlip2's memory.
     WriteConfig,
 }
@@ -224,10 +227,16 @@ impl Command {
                 let config = config.ok_or(format_err!("config is mandatory for this command"))?;
                 timeflip.sync(&config).await?;
             }
-            Time => {
-                let tz = Local::now().timezone();
-                let time = timeflip.time().await?;
-                println!("Time set on TimeFlip: {}", time.with_timezone(&tz));
+            Time { set } => {
+                if *set {
+                    let now = Local::now();
+                    println!("Setting time to: {now}");
+                    timeflip.set_time(now.into()).await?;
+                } else {
+                    let tz = Local::now().timezone();
+                    let time = timeflip.time().await?;
+                    println!("Time set on TimeFlip: {}", time.with_timezone(&tz));
+                }
             }
             WriteConfig => {
                 let config = config.ok_or(format_err!("config is mandatory for this command"))?;
