@@ -1,0 +1,25 @@
+[package]
+name = "timekeeper"
+authors = ["Florentin Mayer"]
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.72"
+chrono = { version = "0.4.26", features = ["serde"] }
+crossterm-027 = { package = "crossterm", version = "0.27", features = ["event-stream"]}
+clap = { version = "4.3.11", features = ["derive"] }
+futures = "0.3.28"
+futures-timer = "3.0"
+ratatui = { version = "0.23.0", default-features = false, features = ["crossterm"] }
+serde = { version = "1.0.171", features = ["derive"] }
+serde_json = "1.0.103"
+toml = "0.7.6"
+tokio = { version = "1.28.2", features = ["fs" ,"macros", "rt-multi-thread", "signal", "time"] }
+tui-textarea = { version = "0.2.4", default-features = false, features = ["ratatui-crossterm"] }
+
+timeflippers = { path = "../timeflippers" }
+
+[[bin]]
+name = "timekeeper"
+path = "src/bin/timekeeper.rs"
