@@ -260,7 +260,8 @@ async fn main() -> anyhow::Result<()> {
 
     let (mut bg_task, session) = BluetoothSession::new().await?;
 
-    let mut timeflip = TimeFlip::connect(&session).await?;
+    let mut timeflip =
+        TimeFlip::connect(&session, config.as_ref().map(|c| c.password.clone())).await?;
     log::info!("connected");
 
     select! {
