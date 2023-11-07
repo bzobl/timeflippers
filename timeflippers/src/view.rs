@@ -7,7 +7,7 @@ use crate::timeflip::Entry;
 mod table;
 use table::{Position, TableHeader};
 
-struct DurationView<'a>(&'a Duration);
+pub struct DurationView<'a>(pub &'a Duration);
 
 impl<'a> fmt::Display for DurationView<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

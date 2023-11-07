@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "timeflippers",
+    "timekeeper",
+]
+resolver = "2"

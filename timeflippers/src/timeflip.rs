@@ -104,7 +104,10 @@ impl TimeFlip {
     ///
     /// FIXME: Connecting does not work reliably yet. If in doubt, pair and connect via
     /// `bluetoothctl` first.
-    pub async fn connect(session: &BluetoothSession) -> Result<Self, Error> {
+    pub async fn connect(
+        session: &BluetoothSession,
+        password: Option<[u8; 6]>,
+    ) -> Result<Self, Error> {
         let time_flip_service_id = gatt::Service::TimeFlip.uuid();
 
         let device = if let Some(device) = session.get_devices().await?.into_iter().find(|dev| {
@@ -164,7 +167,7 @@ impl TimeFlip {
                 password: Password.get_info(session, &id).await?,
                 history: History.get_info(session, &id).await?,
             },
-            password: [0x30; 6],
+            password: password.unwrap_or([0x30; 6]),
         };
 
         timeflip.write_password().await?;

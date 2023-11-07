@@ -121,7 +121,7 @@ impl Facet {
     ///
     /// The facets are indexed from 1 to 12, inclusive.
     pub fn new(index: usize) -> Result<Self, FacetError> {
-        if index >= 1 || index <= 12 {
+        if index >= 1 && index <= 12 {
             Ok(Facet(u8::try_from(index).expect("in range")))
         } else {
             Err(FacetError::InvalidIndex(index))

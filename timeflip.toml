@@ -1,4 +1,4 @@
-password = [ 0, 0, 0, 0, 0, 0 ]
+password = [ 0x30, 0x30, 0x30, 0x30, 0x30, 0x30 ]
 brightness = 100
 blink_interval = 30
 auto_pause = 480
